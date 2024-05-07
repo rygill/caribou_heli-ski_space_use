@@ -246,51 +246,6 @@ pred.ras.standard = pred.all.spatras.reclass/1271261797#7572447167
 writeRaster(pred.ras.standard, "./prediction/All_prediction_LATE_WINTER_standardized_log_transformed_231026.tif", overwrite = TRUE)
 
 
-#
-library(arrow)
-library(sf)
-library(terra)
-library(ggplot2)
-library(ggridges)
-
-
-# load the caribou rsf and calculate the median for each tenure
-bou.rsf = read_parquet("./data/prediction_ALL_loop_LATE_WINTER_231113.parquet")
-bou.rsf = st_as_sf(bou.rsf, coords = c('x','y'), crs = "EPSG:3005")
-ten.shp = st_read('./data/heliski_tenures_names.shp')
-bou.rsf = st_crop(bou.rsf, ten.shp)
-gc()
-str(bou.rsf)
-bou.rsf = as.data.frame(bou.rsf)
-
-#write_parquet(bou.rsf, sink = "prediction_ALL_loop_LATE_WINTER_231113_CLIPPED_TENURES.parquet")
-
-tenures = rast('../rasters_for_prediction/tenure_id.tif')
-
-tenure.bou = extract(tenures, bou.rsf, bind = TRUE, xy = TRUE, na.rm = TRUE, fun = 'median')
-
-
-ggplot(tenure.bou, aes(x = pred.gam, y = tenure_id, fill = stat(x))) +
-  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) # +
-  #scale_fill_viridis_c(name = "Temp. [F]", option = "C") +
-  #labs(title = 'Temperatures in Lincoln NE in 2016')
-
-# load the heli-ski rsf
-heli.rsf = read_parquet('./predictions/HELI_pred_gam_all_data_231122.parquet')
-heli.rsf = heli.rsf[!(heli.rsf$tenure_id == 0),c('pred.gam.bn', 'tenure_id', 'x', 'y')]
-heli.rsf = st_as_sf(heli.rsf, coords = c('x','y'), crs = "EPSG:3005")
-herd.bound = st_read("./data/smc_herd_boundaries_sg.shp")
-herd.bound = herd.bound[,'HERD_NAME']
-heli.herd = st_intersection(heli.rsf, herd.bound)
-
-
-# recovered from slack:
-ggplot(heli.herd, aes(x = std.log, y = herd_name,  alpha = herd_name)) + #, tried adding alpha here with no change
-  geom_density_ridges() + # alpha here produces an error
-  xlab("Heli-ski suitability score") +
-  ylab("Caribou herd") +
-  #scale_fill_viridis_c(name = 'SMC rsf /n score', alpha = 0.2)  +# adding alpha = heli.df$extirpated here produces some weird pattern
-  scale_alpha_manual(values = c(0.2,1)) 
 
 
 #
