@@ -1,1 +1,3 @@
 scripts for data prep analysis and predictions.
+230619.DATA.gam.evaluate.predict.r - updated (2024-11-04) to clean script up
+validation.r - chi-square script to compare analysis vs. holdout dataset for smc and heli-ski rsf predictions
