@@ -1,9 +1,9 @@
 ##
 # 2023-11-22 this script is run on a UBC lab computer for processing power, all data reside on
 # the H drive at UBC.
-#
-#
 
+# 2024-11-04 this script is run on RG's tower. Input files reside in OneDrive folder here:
+# "C:\Users\Ryan\OneDrive\ABMI\caribou_anthropause\git_caribou\caribou_heli-ski_space_use"
 
 #-------------------------------------------------------------------------------
 # 2023-09-29
@@ -148,6 +148,8 @@ gc()
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 # ALL
+# rstack.All.df is the output from the stacking and saving done above. This script
+# can be run from here down
 #-------------------------------------------------------------------------------
 # load the model
 load("./models/mAll_LATE_WINTER_231113.rds") # this should be 231026, if not rerun
@@ -166,6 +168,11 @@ gc()
 # add those fields to exclude
 rstack.All.df$herd = as.factor(rstack.All.df$herd)
 rstack.All.df$individual.local.identifier = as.factor(rstack.All.df$individual.local.identifier)
+
+# modifcation 2024-11-04:
+rstack.All.df$glacier = as.factor(rstack.All.df$glacier)
+rstack.All.df$burned = as.factor(rstack.All.df$burned)
+rstack.All.df$logged = as.factor(rstack.All.df$logged)
 
 #rstack.All.df = st_as_sf(rstack.All.df, coords = c("x", "y"), crs = "EPSG:3005")
 #gc()
@@ -209,22 +216,15 @@ str(out.df)
 # subset
 out.df = out.df[,c("x","y","pred.gam")]
 
-#hist(rstack.All.df$elev_220809)
-#hist(rstack.All.df$slope_220809)
-#hist(rstack.All.df$crown_clos)
-
 # write the results of the loop
-write_parquet(out.df, sink = "H:/caribou_anthropuase/prediction/prediction_ALL_loop_LATE_WINTER_log_trans_231025.parquet")
-out.df = read_parquet("H:/caribou_anthropuase/prediction/prediction_ALL_loop_LATE_WINTER_log_trans_231025.parquet")
+# next lines not run (2024-11-04)
+#write_parquet(out.df, sink = "H:/caribou_anthropuase/prediction/prediction_ALL_loop_LATE_WINTER_log_trans_231025.parquet")
+#out.df = read_parquet("H:/caribou_anthropuase/prediction/prediction_ALL_loop_LATE_WINTER_log_trans_231025.parquet")
 
 # as per the test, convert this to a dataframe (I'm not sure if the parquet format is the same, but change regardless)
 pred.df = as.data.frame(out.df[,c("x","y","pred.gam")])
 rm(out.df)
 gc()
-
-# extract prediction to raster stack to check the predictor values where these large values fall
-#check.stack = st_as_sf(rstack.All.df, coords = c("x","y"), crs = "EPSG:3005")
-#check.stack = extract(pred.all.spatras, check.stack, bind = TRUE)
 
 # convert prediction to raster:
 tic()
@@ -233,22 +233,21 @@ toc()
 #get the 99.9% cutoff
 global(pred.all.spatras, quantile, probs=c(0.05, 0.999), na.rm=TRUE)
 
-pred.all.spatras.reclass = ifel(pred.all.spatras >= 1271261797, 1271261797, pred.all.spatras)
+# 2024-11-04 modification:
+new.max = global(pred.all.spatras, quantile, probs=c(0.05, 0.999), na.rm=TRUE)[[2]]
 
-# checking max predicted values for known locations - I read in the data, selected
-# for those known locations, extracted the predicted value at each known location and
-# took the maximum, which was 885. This could be used as 
+pred.all.spatras.reclass = ifel(pred.all.spatras >= new.max, new.max, pred.all.spatras)
+range(pred.all.spatras.reclass)
 
 #writeRaster(pred.all.spatras.reclass, "./prediction/All_prediction_LATE_WINTER_231026.tif", overwrite = TRUE)
 
 # standardize
-pred.ras.standard = pred.all.spatras.reclass/1271261797#7572447167
-writeRaster(pred.ras.standard, "./prediction/All_prediction_LATE_WINTER_standardized_log_transformed_231026.tif", overwrite = TRUE)
+pred.ras.standard = pred.all.spatras.reclass/new.max#1271261797#7572447167
 
+#modification 2024-11-04
+writeRaster(pred.ras.standard, "./predictions/standardized/All_prediction_LATE_WINTER_standardized_241104.tif", overwrite = TRUE)
 
+# original:
+#writeRaster(pred.ras.standard, "./prediction/All_prediction_LATE_WINTER_standardized_log_transformed_231026.tif", overwrite = TRUE)
 
-
-#
-# EOF
-
-
+#EOF
