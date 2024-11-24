@@ -158,6 +158,11 @@ summary(mAll)
 
 # load the stack as df with xy
 rstack.All.df = st_read_parquet("./partitioned_all/stack_All_study_area_231025.parquet")
+rstack.All.df$x = st_coordinates(rstack.All.df)[,1]
+rstack.All.df$y = st_coordinates(rstack.All.df)[,2]
+
+
+
 names(rstack.All.df)
 #rm(stack.All.df)
 gc()
@@ -251,3 +256,128 @@ writeRaster(pred.ras.standard, "./predictions/standardized/All_prediction_LATE_W
 #writeRaster(pred.ras.standard, "./prediction/All_prediction_LATE_WINTER_standardized_log_transformed_231026.tif", overwrite = TRUE)
 
 #EOF
+
+
+  
+  
+
+  #############################
+# re-run with the model without the random effects
+load("./models/mmod_LATE_WINTER_231113.rds") # this should be 231026, if not rerun
+#rstack.All.df$pred.gam.mmod = predict(object = mmod,
+#                                      newdata = rstack.All.df,
+#                                      type = 'response', 
+#                                      exclude = c("(Intercept)","s(individual.local.identifier)"), proximity = FALSE)
+
+
+out.mmod.df = data.frame()
+for(i in unique(rstack.All.df$chunk.id)){
+  print(i)
+  mmod.df = rstack.All.df[rstack.All.df$chunk.id == i,]
+  mmod.df$pred.gam = predict(object = mmod,
+                             newdata = mmod.df,
+                             type = 'response', 
+                             exclude = c("(Intercept)","s(individual.local.identifier)", "s(herd)"), proximity = FALSE)
+  
+  out.mmod.df = rbind(mmod.df, out.mmod.df)
+  
+}
+
+
+
+
+out.mmod.df = select(out.mmod.df, c('x','y','pred.gam'))
+out.mmod.df = rename(out.mmod.df, 'pred.gam.mmod' = 'pred.gam')
+x.mmod = quantile(out.mmod.df$pred.gam.mmod,c(0.05,0.99), na.rm = TRUE)[[2]]
+out.mmod.df$pred.gam.mmod = ifelse(out.mmod.df$pred.gam.mmod > x.mmod, x.mmod, out.mmod.df$pred.gam.mmod)
+# standardize
+out.mmod.df$pred.gam.mmod = out.mmod.df$pred.gam.mmod / x.mmod
+x.mAll = quantile(out.df$pred.gam,c(0.05,0.99), na.rm = TRUE)[[2]]
+out.df$pred.gam = ifelse(out.df$pred.gam > x.mAll, x.mAll, out.df$pred.gam)
+# standardize
+out.df$pred.gam = out.df$pred.gam / x.mAll
+
+# rasterize and write
+tic()
+pred.mmod.all.spatras = rast(out.mmod.df, crs = "EPSG:3005")
+toc()
+writeRaster(pred.mmod.all.spatras, "./predictions/standardized/mmod_prediction_LATE_WINTER_standardized_241104.tif", overwrite = TRUE)
+# this raster is used to test the difference in the quadrants
+
+# join the two
+out.df$jfield = paste(out.df$x, out.df$y, sep = '-')
+out.mmod.df$jfield = paste(out.mmod.df$x, out.mmod.df$y, sep = '-')
+out.df.all = merge(out.df, out.mmod.df, by = 'jfield')
+write.csv(out.df.all, "./predictions/standardized/mAll_mmod_standardized_values.csv", row.names = FALSE)
+
+#pred.ras.standard.mmod = pred.all.spatras.mmod/x
+#writeRaster(pred.ras.standard.mmod, "./predictions/standardized/RATA_LATE_WINTER_standardized_mAll_241101_XXX.mmod.tif", overwrite = TRUE)
+
+# load this joined df:
+out.df.all = read.csv("./predictions/standardized/mAll_mmod_standardized_values.csv")
+# reclassify each result as > or < 0.5
+out.df.all = dplyr::rename(out.df.all, 'x' = 'x.x', 'y' = 'y.x')
+out.df.all = dplyr::select(out.df.all, c(x,y,pred.gam, pred.gam.mmod))
+out.df.all$mmod_class = ifelse(out.df.all$pred.gam.mmod < 0.5, 1, 2)
+out.df.all$mAll_class = ifelse(out.df.all$pred.gam < 0.5, 1, 2)
+out.chi.dat = pivot_longer(out.df.all, names_to = 'model', values_to = 'prediction')
+ 
+#### chi square 
+ras.mAll = select(out.df, c(x,y,pred.gam))
+ras.mAll = as.data.frame(ras.mAll)
+ras.mAll = select(ras.mAll, -geometry)
+ras.mmod = select(out.df, c(x,y,pred.gam.mmod))
+ras.mmod = as.data.frame(ras.mmod)
+ras.mmod = select(ras.mmod, -geometry)
+
+
+ras.mAll = rast(ras.mAll, crs = "EPSG:3005")
+ras.mmod = rast(ras.mmod, crs = "EPSG:3005")
+plot(ras.mAll)
+
+m <- c(0, 0.1, 1,
+       0.10000000001, 0.1999999999, 2,
+       0.2, 0.2999999999, 3,
+       0.3, 0.3999999999, 4,
+       0.4, 0.4999999999, 5,
+       0.5, 0.5999999999, 6,
+       0.6, 0.6999999999, 7,
+       0.7, 0.7999999999, 8,
+       0.8, 0.8999999999, 9,
+       0.9, 1, 10)
+rclmat <- matrix(m, ncol=3, byrow=TRUE)
+ras.mAll10 <- classify(ras.mAll, rclmat, include.lowest=TRUE)
+ras.mmod10 <- classify(ras.mmod, rclmat, include.lowest=TRUE)
+#plot(smc)
+
+ras.mAll10 = as.data.frame(ras.mAll10)
+ras.mAll10$model = 'mAll'
+ras.mmod10 = as.data.frame(ras.mmod10)
+ras.mmod10$model = 'mmod'
+ras.mmod10 = rename(ras.mmod10, 'pred.gam' = 'pred.gam.mmod')
+hist(ras.mmod10$pred.gam)
+
+chi.dat = rbind(ras.mAll10, ras.mmod10)
+
+# get total points per period
+dat.total = chi.dat %>%
+  group_by(model, pred.gam) %>%
+  summarise(total_pts_set = n())
+
+barplot(dat.total$pred.gam, dat.total$total_pts_set)
+ggplot() +
+  geom_col(data = dat.total, aes(x = pred.gam, y = total_pts_set)) +
+  facet_grid(~model)
+
+# need the format: 
+# use dat.total but convert to wide so there are columns mAll, mmod, pred.ga
+dat.chi = tidyr::pivot_wider(dat.total, names_from = 'model', values_from = 'total_pts_set')
+chisq.test(dat.chi$mAll, dat.chi$mmod)
+
+
+
+
+
+# EOF
+
+
