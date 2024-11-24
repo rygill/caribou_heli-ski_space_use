@@ -14,7 +14,7 @@ library(ggplot2)
 library(marginaleffects)
 getwd()
 
-dat = read_parquet("./data/all_data_LATE_WINTER_231024.parquet") #dat = read.csv("./data/rsf/gam/all_data_230804.csv")
+dat = read_parquet("./data/all_data_LATE_WINTER_231024.parquet") # this is all SMC data #dat = read.csv("./data/rsf/gam/all_data_230804.csv")
 names(dat)
 # which columns to keep
 dat1 = dat[,c("period", "pt_type", "individual.local.identifier", "timestamp", "herd", 
@@ -142,6 +142,26 @@ plot.gam(mAll, rug = FALSE, pages = 1, scale = 0, scheme = 3,
          residuals = FALSE, ylab = "smoothed term", res = 600)
 dev.off()
 
-
+mAll <-
+  bam(detection / K ~ #this down weights the known values
+        s(herd, bs = 're') +
+        s(individual.local.identifier, bs = 're') + 
+        s(elev_220809, herd, k = 5, bs = 'fs') + 
+        s(slope_220809, herd, k = 3, bs = 'fs') + 
+        s(crown_clos, k = 5, bs = 'fs') + # no herd random effect for CC
+        s(proj_age_220809, herd, k = 3, bs = 'fs') + 
+        ti(proj_age_220809, crown_clos, k = 5) + # no herd random effect for interactions
+        ti(elev_220809, slope_220809, k = 5) + # no herd random effect for interactions
+        ti(proj_age_220809, by = burned, k = 5) + 
+        ti(proj_age_220809, by = logged, k = 5) +
+        glacier +
+        burned +
+        logged,
+      family = poisson(link = 'log'), 
+      data = dat3,  
+      weights = weight, # downscale 1s based on sample size and K
+      method = 'fREML',
+      discrete = TRUE,
+      control = gam.control(nthreads = 10, trace = TRUE))
 
 
